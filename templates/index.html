@@ -49,8 +49,30 @@
                             <input type="url" class="form-control" id="videoUrl" name="video_url" placeholder="https://www.youtube.com/watch?v=..." required>
                             <div class="form-text">Enter the full URL of a YouTube video with music content</div>
                         </div>
+                        <div class="mb-3">
+                            <label for="minDuration" class="form-label">Minimum Chord Duration (seconds)</label>
+                            <input type="range" class="form-range" id="minDuration" name="min_duration" min="0.1" max="2.0" step="0.1" value="0.5">
+                            <div class="d-flex justify-content-between">
+                                <small>Short (0.1s)</small>
+                                <small class="text-center" id="durationValue">0.5s</small>
+                                <small>Long (2.0s)</small>
+                            </div>
+                            <div class="form-text">Adjust to detect shorter or longer chords. Higher values produce fewer, longer chord segments.</div>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="leftHanded" name="left_handed" value="true">
+                            <label class="form-check-label" for="leftHanded">Include left-handed chord diagrams</label>
+                            <div class="form-text">Display mirrored chord diagrams for left-handed players</div>
+                        </div>
                         <button type="submit" class="btn btn-primary">Analyze Chords</button>
                     </form>
+                    
+                    <script>
+                        // Update the duration value display
+                        document.getElementById('minDuration').addEventListener('input', function() {
+                            document.getElementById('durationValue').textContent = this.value + 's';
+                        });
+                    </script>
                 </div>
             </div>
             

@@ -48,6 +48,8 @@
             color: white;
             font-weight: bold;
             min-width: 100px;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
         .major-chord {
             background-color: #6c757d;
@@ -86,10 +88,37 @@
             <a href="{{ url_for('home') }}" class="btn btn-primary">Analyze Another Video</a>
         </div>
         
+        <!-- Audio Waveform Player -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3>Audio Waveform</h3>
+            </div>
+            <div class="card-body">
+                {% if analysis_info.waveform_path %}
+                <div class="waveform-container text-center mb-3">
+                    <img src="{{ url_for('static', filename=analysis_info.waveform_path) }}" class="img-fluid" alt="Audio Waveform">
+                </div>
+                {% endif %}
+                
+                {% if analysis_info.audio_path %}
+                <div class="audio-player text-center">
+                    <audio controls class="w-100" id="audio-player">
+                        <source src="{{ url_for('static', filename=analysis_info.audio_path) }}" type="audio/mpeg">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
         <div class="row">
             <div class="col-md-6">
                 <h3>Detected Chords</h3>
+                {% if analysis_info.left_handed %}
+                <p class="text-muted">Unique chords found in the video (includes left-handed diagrams)</p>
+                {% else %}
                 <p class="text-muted">Unique chords found in the video</p>
+                {% endif %}
                 
                 <div class="row">
                     {% set unique_chords = [] %}
@@ -103,6 +132,13 @@
                                         {% if result.diagram_path %}
                                             <img src="{{ url_for('static', filename='chord_previews/' + result.diagram_path) }}" 
                                                 class="img-fluid chord-image" alt="{{ result.chord }} chord">
+                                            
+                                            {% if analysis_info.left_handed and result.left_handed_diagram_path %}
+                                                <hr>
+                                                <h6>Left-Handed Version</h6>
+                                                <img src="{{ url_for('static', filename='chord_previews/' + result.left_handed_diagram_path) }}" 
+                                                    class="img-fluid chord-image" alt="{{ result.chord }} chord (Left-Handed)">
+                                            {% endif %}
                                         {% else %}
                                             <p class="text-muted">No diagram available</p>
                                         {% endif %}
@@ -128,6 +164,26 @@
                                 {{ result.chord }}<br><small>{{ result.start_time }}s - {{ result.end_time }}s</small>
                             </div>
                         {% endfor %}
+                    </div>
+                </div>
+                
+                <h3 class="mt-4">Analysis Information</h3>
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 text-center">
+                                <h5>Total Chords</h5>
+                                <p class="display-6">{{ analysis_info.total_chords }}</p>
+                            </div>
+                            <div class="col-md-4 text-center">
+                                <h5>Min Chord Duration</h5>
+                                <p class="display-6">{{ analysis_info.min_duration }}s</p>
+                            </div>
+                            <div class="col-md-4 text-center">
+                                <h5>Avg Chord Duration</h5>
+                                <p class="display-6">{{ analysis_info.avg_chord_duration }}s</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -157,5 +213,65 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // JavaScript for interactive audio player with chord timeline integration
+        document.addEventListener('DOMContentLoaded', function() {
+            const audioPlayer = document.getElementById('audio-player');
+            const timelineItems = document.querySelectorAll('.timeline-item');
+            
+            // Add click handlers to timeline items to seek to the correct position
+            timelineItems.forEach(function(item) {
+                item.addEventListener('click', function() {
+                    const timeText = item.querySelector('small').textContent;
+                    const startTime = parseFloat(timeText.split(' - ')[0]);
+                    
+                    // Set audio time and play
+                    if (audioPlayer) {
+                        audioPlayer.currentTime = startTime;
+                        audioPlayer.play();
+                    }
+                });
+            });
+            
+            // Highlight current chord during playback
+            if (audioPlayer) {
+                audioPlayer.addEventListener('timeupdate', function() {
+                    const currentTime = audioPlayer.currentTime;
+                    
+                    // Reset all timeline items
+                    timelineItems.forEach(function(item) {
+                        item.style.opacity = '0.7';
+                        item.style.transform = 'scale(1)';
+                    });
+                    
+                    // Find and highlight the current chord
+                    timelineItems.forEach(function(item) {
+                        const timeText = item.querySelector('small').textContent;
+                        const times = timeText.split(' - ');
+                        const startTime = parseFloat(times[0]);
+                        const endTime = parseFloat(times[1]);
+                        
+                        if (currentTime >= startTime && currentTime <= endTime) {
+                            item.style.opacity = '1';
+                            item.style.transform = 'scale(1.05)';
+                            
+                            // Scroll to the current chord if it's not visible
+                            const container = document.querySelector('.chord-timeline');
+                            const containerWidth = container.offsetWidth;
+                            const itemLeft = item.offsetLeft;
+                            const itemWidth = item.offsetWidth;
+                            
+                            // Check if item is outside the visible area
+                            if (itemLeft < container.scrollLeft || 
+                                itemLeft + itemWidth > container.scrollLeft + containerWidth) {
+                                // Center the item
+                                container.scrollLeft = itemLeft - (containerWidth / 2) + (itemWidth / 2);
+                            }
+                        }
+                    });
+                });
+            }
+        });
 </body>
 </html>
