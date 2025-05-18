@@ -95,8 +95,9 @@
             </div>
             <div class="card-body">
                 {% if analysis_info.waveform_path %}
-                <div class="waveform-container text-center mb-3">
-                    <img src="{{ url_for('static', filename=analysis_info.waveform_path) }}" class="img-fluid" alt="Audio Waveform">
+                <div class="waveform-container text-center mb-3" style="position: relative;">
+                    <img src="{{ url_for('static', filename=analysis_info.waveform_path) }}" class="img-fluid" alt="Audio Waveform" id="waveform-image">
+                    <div id="position-line" style="position: absolute; top: 0; bottom: 0; width: 2px; background-color: red; z-index: 10; pointer-events: none; left: 0; display: none;"></div>
                 </div>
                 {% endif %}
                 
@@ -108,6 +109,35 @@
                     </audio>
                 </div>
                 {% endif %}
+            </div>
+        </div>
+        
+        <!-- Full width chord progression -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h3>Chord Progression</h3>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <p class="text-muted mb-0">Timeline of detected chords</p>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoScrollSwitch" checked>
+                        <label class="form-check-label" for="autoScrollSwitch">Auto-scroll</label>
+                    </div>
+                </div>
+                
+                <div class="chord-timeline" id="chord-timeline">
+                    <div class="timeline-container" id="timeline-container">
+                        {% for result in results %}
+                            {% set width = (result.duration / results[-1].end_time * 300) | round %}
+                            {% if width < 100 %}{% set width = 100 %}{% endif %}
+                            <div class="timeline-item {% if 'm' in result.chord %}minor-chord{% else %}major-chord{% endif %}" 
+                                 style="width: {{ width }}px;"
+                                 data-start-time="{{ result.start_time }}"
+                                 data-end-time="{{ result.end_time }}">
+                                <strong>{{ result.chord }}</strong><br><small>{{ result.start_time }}s - {{ result.end_time }}s</small>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -151,21 +181,6 @@
             </div>
             
             <div class="col-md-6">
-                <h3>Chord Progression</h3>
-                <p class="text-muted">Timeline of detected chords</p>
-                
-                <div class="chord-timeline">
-                    <div class="timeline-container">
-                        {% for result in results %}
-                            {% set width = (result.duration / results[-1].end_time * 300) | round %}
-                            {% if width < 100 %}{% set width = 100 %}{% endif %}
-                            <div class="timeline-item {% if 'm' in result.chord %}minor-chord{% else %}major-chord{% endif %}" 
-                                style="width: {{ width }}px;">
-                                {{ result.chord }}<br><small>{{ result.start_time }}s - {{ result.end_time }}s</small>
-                            </div>
-                        {% endfor %}
-                    </div>
-                </div>
                 
                 <h3 class="mt-4">Analysis Information</h3>
                 <div class="card mb-4">
@@ -266,12 +281,18 @@
         document.addEventListener('DOMContentLoaded', function() {
             const audioPlayer = document.getElementById('audio-player');
             const timelineItems = document.querySelectorAll('.timeline-item');
+            const positionLine = document.getElementById('position-line');
+            const waveformImage = document.getElementById('waveform-image');
+            const chordTimeline = document.getElementById('chord-timeline');
+            const timelineContainer = document.getElementById('timeline-container');
+            const autoScrollSwitch = document.getElementById('autoScrollSwitch');
+            
+            let currentActiveChord = null;
             
             // Add click handlers to timeline items to seek to the correct position
             timelineItems.forEach(function(item) {
                 item.addEventListener('click', function() {
-                    const timeText = item.querySelector('small').textContent;
-                    const startTime = parseFloat(timeText.split(' - ')[0]);
+                    const startTime = parseFloat(item.dataset.startTime);
                     
                     // Set audio time and play
                     if (audioPlayer) {
@@ -281,10 +302,33 @@
                 });
             });
             
-            // Highlight current chord during playback
-            if (audioPlayer) {
+            // Highlight current chord during playback and update position line on waveform
+            if (audioPlayer && positionLine && waveformImage) {
+                // Show the position line when audio is playing
+                audioPlayer.addEventListener('play', function() {
+                    positionLine.style.display = 'block';
+                });
+                
+                // Hide the position line when audio is paused or ended
+                audioPlayer.addEventListener('pause', function() {
+                    positionLine.style.display = 'none';
+                });
+                
+                audioPlayer.addEventListener('ended', function() {
+                    positionLine.style.display = 'none';
+                });
+                
+                // Update position line and chord highlighting
                 audioPlayer.addEventListener('timeupdate', function() {
                     const currentTime = audioPlayer.currentTime;
+                    const duration = audioPlayer.duration;
+                    const waveformWidth = waveformImage.clientWidth;
+                    
+                    // Calculate the position of the line based on current time
+                    if (duration > 0) {
+                        const position = (currentTime / duration) * waveformWidth;
+                        positionLine.style.left = position + 'px';
+                    }
                     
                     // Reset all timeline items
                     timelineItems.forEach(function(item) {
@@ -293,30 +337,77 @@
                     });
                     
                     // Find and highlight the current chord
-                    timelineItems.forEach(function(item) {
-                        const timeText = item.querySelector('small').textContent;
-                        const times = timeText.split(' - ');
-                        const startTime = parseFloat(times[0]);
-                        const endTime = parseFloat(times[1]);
+                    let foundActiveChord = false;
+                    
+                    for (let i = 0; i < timelineItems.length; i++) {
+                        const item = timelineItems[i];
+                        const startTime = parseFloat(item.dataset.startTime);
+                        const endTime = parseFloat(item.dataset.endTime);
                         
                         if (currentTime >= startTime && currentTime <= endTime) {
+                            // Highlight the active chord
                             item.style.opacity = '1';
                             item.style.transform = 'scale(1.05)';
+                            currentActiveChord = item;
+                            foundActiveChord = true;
                             
-                            // Scroll to the current chord if it's not visible
-                            const container = document.querySelector('.chord-timeline');
-                            const containerWidth = container.offsetWidth;
-                            const itemLeft = item.offsetLeft;
-                            const itemWidth = item.offsetWidth;
-                            
-                            // Check if item is outside the visible area
-                            if (itemLeft < container.scrollLeft || 
-                                itemLeft + itemWidth > container.scrollLeft + containerWidth) {
-                                // Center the item
-                                container.scrollLeft = itemLeft - (containerWidth / 2) + (itemWidth / 2);
+                            // Auto-scroll to the current chord if the switch is enabled
+                            if (autoScrollSwitch && autoScrollSwitch.checked && chordTimeline) {
+                                // Get the position of the current chord
+                                const timelineWidth = chordTimeline.clientWidth;
+                                const itemLeft = item.offsetLeft;
+                                const itemWidth = item.offsetWidth;
+                                
+                                // Smoothly scroll the chord into view
+                                chordTimeline.scrollTo({
+                                    left: itemLeft - (timelineWidth / 2) + (itemWidth / 2),
+                                    behavior: 'smooth'
+                                });
                             }
+                            
+                            break;
                         }
-                    });
+                    }
+                    
+                    // If no active chord was found (e.g., in gaps between chords)
+                    if (!foundActiveChord) {
+                        currentActiveChord = null;
+                    }
+                });
+            }
+            
+            // Click on the waveform to seek to that position
+            if (waveformImage && audioPlayer) {
+                waveformImage.addEventListener('click', function(e) {
+                    const rect = waveformImage.getBoundingClientRect();
+                    const clickPosition = e.clientX - rect.left;
+                    const percentClick = clickPosition / rect.width;
+                    
+                    if (audioPlayer.duration) {
+                        audioPlayer.currentTime = percentClick * audioPlayer.duration;
+                        
+                        // Start playing if paused
+                        if (audioPlayer.paused) {
+                            audioPlayer.play();
+                        }
+                    }
+                });
+            }
+            
+            // Disable auto-scrolling when the user manually scrolls the chord timeline
+            if (chordTimeline) {
+                chordTimeline.addEventListener('scroll', function() {
+                    if (autoScrollSwitch && autoScrollSwitch.checked) {
+                        // Check if this is a user-initiated scroll or an auto-scroll
+                        // We'll use a simple flag and timeout to detect this
+                        chordTimeline.userScrolling = true;
+                        clearTimeout(chordTimeline.scrollTimeout);
+                        
+                        // After a short delay, re-enable auto-scrolling
+                        chordTimeline.scrollTimeout = setTimeout(function() {
+                            chordTimeline.userScrolling = false;
+                        }, 2000); // 2 second timeout before auto-scroll takes over again
+                    }
                 });
             }
         });
