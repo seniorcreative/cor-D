@@ -6,6 +6,183 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import os
+from collections import Counter
+
+def detect_key(y, sr, hop_length=1024):
+    """
+    Detect the musical key of an audio track
+    
+    Args:
+        y: Audio time series
+        sr: Sampling rate
+        hop_length: Number of samples between successive chroma frames
+        
+    Returns:
+        Dictionary containing detected key information (root, mode, confidence)
+    """
+    # Extract chroma features
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length)
+    
+    # Aggregate chroma features across time to get overall pitch content
+    chroma_sum = np.sum(chroma, axis=1)
+    chroma_normalized = chroma_sum / np.sum(chroma_sum)
+    
+    # Define key profiles for major and minor keys (Krumhansl-Schmuckler key profiles)
+    # Values represent the hierarchy of importance for each pitch class in a given key
+    major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+    minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+    
+    # Normalize profiles
+    major_profile = major_profile / np.sum(major_profile)
+    minor_profile = minor_profile / np.sum(minor_profile)
+    
+    # Compute correlations for all possible keys (12 major + 12 minor = 24 keys)
+    key_correlations = []
+    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    
+    # Calculate correlation for all major keys
+    for i in range(12):
+        # Shift the profile to match each possible key
+        major_shifted = np.roll(major_profile, i)
+        correlation = np.corrcoef(chroma_normalized, major_shifted)[0, 1]
+        key_correlations.append((notes[i], 'major', correlation))
+    
+    # Calculate correlation for all minor keys
+    for i in range(12):
+        # Shift the profile to match each possible key
+        minor_shifted = np.roll(minor_profile, i)
+        correlation = np.corrcoef(chroma_normalized, minor_shifted)[0, 1]
+        key_correlations.append((notes[i], 'minor', correlation))
+    
+    # Find the key with the highest correlation
+    key_correlations.sort(key=lambda x: x[2], reverse=True)
+    best_key = key_correlations[0]
+    
+    # Format the key name (e.g., "C major", "A minor")
+    if best_key[1] == 'major':
+        key_name = f"{best_key[0]}"
+    else:
+        key_name = f"{best_key[0]}m"
+    
+    # Get the top 3 key candidates for reference
+    top_keys = key_correlations[:3]
+    
+    return {
+        'key': key_name,
+        'root': best_key[0],
+        'mode': best_key[1],
+        'confidence': best_key[2],
+        'alternatives': [{'key': f"{k[0]}{'' if k[1]=='major' else 'm'}", 'confidence': k[2]} for k in top_keys[1:3]]
+    }
+
+def suggest_chord_progressions(key):
+    """
+    Generate common chord progressions based on the detected key
+    
+    Args:
+        key: Dictionary containing key information
+        
+    Returns:
+        Dictionary with suggested chord progressions
+    """
+    # Define root note and whether it's major or minor
+    root = key['root']
+    is_major = key['mode'] == 'major'
+    
+    # Note indices for building chord progressions
+    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    root_idx = notes.index(root)
+    
+    # Define scale degrees based on major or minor key
+    if is_major:
+        # Major scale: I, ii, iii, IV, V, vi, vii°
+        scale_degrees = [
+            (0, ''),    # I (major)
+            (2, 'm'),   # ii (minor)
+            (4, 'm'),   # iii (minor)
+            (5, ''),    # IV (major)
+            (7, ''),    # V (major)
+            (9, 'm'),   # vi (minor)
+            (11, 'm7')  # vii (minor 7th or diminished)
+        ]
+    else:
+        # Natural minor scale: i, ii°, III, iv, v, VI, VII
+        scale_degrees = [
+            (0, 'm'),   # i (minor)
+            (2, 'm7'),  # ii° (diminished, using m7 as approximation)
+            (3, ''),    # III (major)
+            (5, 'm'),   # iv (minor)
+            (7, 'm'),   # v (minor) or (7, '') for V (major) in harmonic minor
+            (8, ''),    # VI (major)
+            (10, '')    # VII (major)
+        ]
+    
+    # Generate actual chords based on the key
+    chords = {}
+    for degree, (interval, chord_type) in enumerate(scale_degrees, 1):
+        # Calculate the note index, wrapping around if necessary
+        note_idx = (root_idx + interval) % 12
+        chord_name = f"{notes[note_idx]}{chord_type}"
+        # Store as roman numeral -> chord name
+        numeral = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii'][degree-1]
+        if is_major:
+            if degree in [1, 4, 5]:  # Major chords in major key
+                numeral = numeral.upper()
+        else:
+            if degree in [3, 6, 7]:  # Major chords in minor key
+                numeral = numeral.upper()
+        chords[numeral] = chord_name
+    
+    # Define common chord progressions using roman numerals
+    common_progressions = [
+        # Major key progressions
+        {'name': 'I-IV-V', 'description': 'The most basic and common progression in popular music'},
+        {'name': 'I-V-vi-IV', 'description': 'The "pop-punk" progression, used in countless pop songs'},
+        {'name': 'ii-V-I', 'description': 'The jazz standard progression'},
+        {'name': 'I-vi-IV-V', 'description': '50s progression, used in doo-wop and early rock and roll'},
+        {'name': 'vi-IV-I-V', 'description': 'Minor variation of the pop progression, often used for emotional songs'},
+        
+        # Minor key progressions
+        {'name': 'i-iv-v', 'description': 'Basic minor key progression'},
+        {'name': 'i-VI-III-VII', 'description': 'Common minor progression in rock and film music'},
+        {'name': 'i-iv-VII-III', 'description': 'Andalusian cadence, common in flamenco and rock music'},
+        {'name': 'i-VII-VI-VII', 'description': 'Minor rock progression'},
+        {'name': 'i-v-VI-VII', 'description': 'Natural minor key rock progression'}
+    ]
+    
+    # Build actual chord progressions based on the key
+    progressions = []
+    
+    # Choose progressions based on major/minor key
+    if is_major:
+        relevant_progressions = [p for p in common_progressions if p['name'][0].isupper() or p['name'][0] == 'i']
+    else:
+        relevant_progressions = [p for p in common_progressions if p['name'][0].islower() or p['name'][0] == 'I']
+    
+    # Convert roman numerals to actual chord names
+    for prog in relevant_progressions:
+        numerals = prog['name'].split('-')
+        
+        # Map each numeral to its corresponding chord
+        chord_progression = []
+        for numeral in numerals:
+            # Handle numeral variations (case sensitivity)
+            if numeral.lower() in chords:
+                chord_progression.append(chords[numeral.lower()])
+            else:
+                # Try uppercase version as fallback
+                chord_progression.append(chords.get(numeral.upper(), "?"))
+        
+        progressions.append({
+            'name': prog['name'],
+            'description': prog['description'],
+            'chords': chord_progression
+        })
+    
+    return {
+        'key': key['key'],
+        'progressions': progressions[:5]  # Return top 5 progressions
+    }
 
 def extract_chords(y, sr, hop_length=1024, n_chroma=12, min_duration=0.5):
     """

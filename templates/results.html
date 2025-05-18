@@ -171,18 +171,65 @@
                 <div class="card mb-4">
                     <div class="card-body">
                         <div class="row">
-                            <div class="col-md-4 text-center">
+                            <div class="col-md-3 text-center">
                                 <h5>Total Chords</h5>
                                 <p class="display-6">{{ analysis_info.total_chords }}</p>
                             </div>
-                            <div class="col-md-4 text-center">
+                            <div class="col-md-3 text-center">
                                 <h5>Min Chord Duration</h5>
                                 <p class="display-6">{{ analysis_info.min_duration }}s</p>
                             </div>
-                            <div class="col-md-4 text-center">
+                            <div class="col-md-3 text-center">
                                 <h5>Avg Chord Duration</h5>
                                 <p class="display-6">{{ analysis_info.avg_chord_duration }}s</p>
                             </div>
+                            <div class="col-md-3 text-center">
+                                <h5>Detected Key</h5>
+                                <p class="display-6">{{ analysis_info.key_info.key }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Key Detection and Chord Progressions -->
+                <h3 class="mt-4">Detected Key Information</h3>
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Key: {{ analysis_info.key_info.key }} ({{ analysis_info.key_info.mode }})</h5>
+                        <p class="text-muted mb-0">Confidence: {{ (analysis_info.key_info.confidence * 100) | round(1) }}%</p>
+                    </div>
+                    <div class="card-body">
+                        <p>Alternative key possibilities:</p>
+                        <ul>
+                            {% for alt in analysis_info.key_info.alternatives %}
+                                <li>{{ alt.key }} ({{ (alt.confidence * 100) | round(1) }}%)</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                
+                <h3 class="mt-4">Suggested Chord Progressions in {{ analysis_info.key_info.key }}</h3>
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <p class="text-muted">Common chord progressions that work well in this key:</p>
+                        <div class="row">
+                            {% for progression in analysis_info.chord_progressions.progressions %}
+                                <div class="col-md-6 mb-3">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5>{{ progression.name }}</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <h6>{{ progression.description }}</h6>
+                                            <div class="d-flex flex-wrap mt-2">
+                                                {% for chord in progression.chords %}
+                                                    <div class="badge bg-primary me-2 mb-2 p-2">{{ chord }}</div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
                         </div>
                     </div>
                 </div>

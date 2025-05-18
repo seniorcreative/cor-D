@@ -3,7 +3,7 @@ import os
 import json
 import shutil
 from youtube_utils import download_youtube_audio, load_and_analyze_audio
-from chord_analysis import extract_chords, generate_chord_progression_preview, generate_waveform_image
+from chord_analysis import extract_chords, generate_chord_progression_preview, generate_waveform_image, detect_key, suggest_chord_progressions
 import librosa
 
 app = Flask(__name__)
@@ -65,6 +65,10 @@ def analyze():
         waveform_file = os.path.join('static', 'waveforms', f"{video_id}_waveform.png")
         waveform_path = generate_waveform_image(y, sr, waveform_file)
         
+        # Detect key and suggest chord progressions
+        key_info = detect_key(y, sr)
+        chord_progressions = suggest_chord_progressions(key_info)
+        
         # Copy the audio file to static directory for web playback
         audio_web_path = os.path.join('static', 'audio', f"{video_id}.mp3")
         shutil.copy2(audio_file, audio_web_path)
@@ -99,7 +103,9 @@ def analyze():
             "left_handed": left_handed,
             "waveform_path": os.path.join('waveforms', f"{video_id}_waveform.png"),
             "audio_path": os.path.join('audio', f"{video_id}.mp3"),
-            "duration": librosa.get_duration(y=y, sr=sr)
+            "duration": librosa.get_duration(y=y, sr=sr),
+            "key_info": key_info,
+            "chord_progressions": chord_progressions
         }
         
         # Save results for later reference
